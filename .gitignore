@@ -1,0 +1,14 @@
+# Build directories
+build/
+sdkconfig.old
+
+# Python & System files
+__pycache__/
+*.py[cod]
+.DS_Store
+
+# Local IDE settings
+.vscode/
+.idea/
+
+secrets.h
