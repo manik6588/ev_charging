@@ -1,75 +1,149 @@
 #include "station.h"
-#include "driver/mcpwm.h"
-#include "driver/gpio.h"
+#include "driver/mcpwm_prelude.h"
 #include "esp_log.h"
-#include "esp_rom_sys.h"   // for esp_rom_delay_us()
+#include "esp_rom_sys.h"
 
 #define TAG "STATION"
 
 /* ================= CONFIG ================= */
 
-#define PIN_HIN 21
-#define PIN_LIN 22
+// GPIO
+#define PIN_HIN 26
+#define PIN_LIN 27
 
-#define PWM_FREQ 80000   // 80 kHz
-#define DEAD_TIME_NS 800
+// PWM CONFIG
+#define PWM_FREQ        15000          // 15 kHz
+#define TIMER_RES_HZ    10000000       // 10 MHz
 
-// MCPWM clock ≈ 80MHz → 12.5ns per tick
-#define DEAD_TIME_TICKS (DEAD_TIME_NS / 12.5)
+#define PERIOD_TICKS    (TIMER_RES_HZ / PWM_FREQ)   // ≈ 666 ticks
+
+// DEAD TIME
+#define DEAD_TIME_NS    800
+#define DEAD_TICKS ((uint32_t)(((uint64_t)DEAD_TIME_NS * TIMER_RES_HZ) / 1000000000ULL)) // ≈ 8 ticks
 
 /* ================= STATE ================= */
 
 static station_state_t state = STATION_STATE_OFF;
-static float current_duty = 0;
+static float current_duty = 50.0f;   // default 50%
 
-/* ================= INTERNAL SAFETY ================= */
+/* MCPWM Handles */
+static mcpwm_timer_handle_t timer = NULL;
+static mcpwm_oper_handle_t oper = NULL;
+static mcpwm_cmpr_handle_t comparator = NULL;
+static mcpwm_gen_handle_t gen_hin = NULL;
+static mcpwm_gen_handle_t gen_lin = NULL;
 
-// Force both outputs LOW immediately
-static inline void force_all_low(void)
-{
-    mcpwm_set_signal_low(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A);
-    mcpwm_set_signal_low(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_B);
-}
+/* ================= INTERNAL ================= */
 
-// Small guard delay (extra safety beyond hardware dead-time)
 static inline void guard_delay(void)
 {
-    esp_rom_delay_us(2); // 2 µs safety margin
+    esp_rom_delay_us(2); // short safety delay
 }
 
 /* ================= INIT ================= */
 
 void station_init(void)
 {
-    // Configure MCPWM pins
-    mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0A, PIN_HIN);
-    mcpwm_gpio_init(MCPWM_UNIT_0, MCPWM0B, PIN_LIN);
+    ESP_LOGI(TAG, "Init start");
 
-    // PWM configuration
-    mcpwm_config_t pwm_config = {
-        .frequency = PWM_FREQ,
-        .cmpr_a = 0,
-        .cmpr_b = 0,
-        .counter_mode = MCPWM_UP_COUNTER,
-        .duty_mode = MCPWM_DUTY_MODE_0,
+    // Sanity check
+    if (PERIOD_TICKS == 0 || PERIOD_TICKS > 1000000) {
+        ESP_LOGE(TAG, "Invalid PERIOD_TICKS: %lu", PERIOD_TICKS);
+        return;
+    }
+
+    ESP_LOGI(TAG, "Freq=%d Hz | Period=%lu | Dead=%lu ticks",
+             PWM_FREQ, PERIOD_TICKS, DEAD_TICKS);
+
+    /* -------- TIMER -------- */
+    mcpwm_timer_config_t tcfg = {
+        .group_id = 0,
+        .clk_src = MCPWM_TIMER_CLK_SRC_DEFAULT,
+        .resolution_hz = TIMER_RES_HZ,
+        .period_ticks = PERIOD_TICKS,
+        .count_mode = MCPWM_TIMER_COUNT_MODE_UP,
+    };
+    ESP_ERROR_CHECK(mcpwm_new_timer(&tcfg, &timer));
+
+    /* -------- OPERATOR -------- */
+    mcpwm_operator_config_t ocfg = {
+        .group_id = 0
+    };
+    ESP_ERROR_CHECK(mcpwm_new_operator(&ocfg, &oper));
+    ESP_ERROR_CHECK(mcpwm_operator_connect_timer(oper, timer));
+
+    /* -------- COMPARATOR -------- */
+    mcpwm_comparator_config_t ccfg = {};
+    ESP_ERROR_CHECK(mcpwm_new_comparator(oper, &ccfg, &comparator));
+
+    /* -------- GENERATORS -------- */
+    mcpwm_generator_config_t gcfg_h = {
+        .gen_gpio_num = PIN_HIN
+    };
+    ESP_ERROR_CHECK(mcpwm_new_generator(oper, &gcfg_h, &gen_hin));
+
+    mcpwm_generator_config_t gcfg_l = {
+        .gen_gpio_num = PIN_LIN
+    };
+    ESP_ERROR_CHECK(mcpwm_new_generator(oper, &gcfg_l, &gen_lin));
+
+    /* -------- PWM ACTIONS -------- */
+
+    // HIN: HIGH at start, LOW at compare
+    ESP_ERROR_CHECK(mcpwm_generator_set_action_on_timer_event(
+        gen_hin,
+        MCPWM_GEN_TIMER_EVENT_ACTION(
+            MCPWM_TIMER_DIRECTION_UP,
+            MCPWM_TIMER_EVENT_EMPTY,
+            MCPWM_GEN_ACTION_HIGH
+        )
+    ));
+
+    ESP_ERROR_CHECK(mcpwm_generator_set_action_on_compare_event(
+        gen_hin,
+        MCPWM_GEN_COMPARE_EVENT_ACTION(
+            MCPWM_TIMER_DIRECTION_UP,
+            comparator,
+            MCPWM_GEN_ACTION_LOW
+        )
+    ));
+
+    // LIN: complementary (LOW at start, HIGH at compare)
+    ESP_ERROR_CHECK(mcpwm_generator_set_action_on_timer_event(
+        gen_lin,
+        MCPWM_GEN_TIMER_EVENT_ACTION(
+            MCPWM_TIMER_DIRECTION_UP,
+            MCPWM_TIMER_EVENT_EMPTY,
+            MCPWM_GEN_ACTION_LOW
+        )
+    ));
+
+    ESP_ERROR_CHECK(mcpwm_generator_set_action_on_compare_event(
+        gen_lin,
+        MCPWM_GEN_COMPARE_EVENT_ACTION(
+            MCPWM_TIMER_DIRECTION_UP,
+            comparator,
+            MCPWM_GEN_ACTION_HIGH
+        )
+    ));
+
+    /* -------- DEAD TIME -------- */
+    mcpwm_dead_time_config_t dtcfg = {
+        .posedge_delay_ticks = DEAD_TICKS,
+        .negedge_delay_ticks = DEAD_TICKS
     };
 
-    mcpwm_init(MCPWM_UNIT_0, MCPWM_TIMER_0, &pwm_config);
+    ESP_ERROR_CHECK(mcpwm_generator_set_dead_time(gen_hin, gen_lin, &dtcfg));
 
-    // 🔥 DEAD-TIME (core safety)
-    mcpwm_deadtime_enable(
-        MCPWM_UNIT_0,
-        MCPWM_TIMER_0,
-        MCPWM_ACTIVE_HIGH_COMPLIMENT_MODE,
-        DEAD_TIME_TICKS,
-        DEAD_TIME_TICKS
-    );
+    /* -------- SAFE START -------- */
+    ESP_ERROR_CHECK(mcpwm_comparator_set_compare_value(comparator, 0));
 
-    // Start safe
-    force_all_low();
+    ESP_ERROR_CHECK(mcpwm_timer_enable(timer));
+    ESP_ERROR_CHECK(mcpwm_timer_start_stop(timer, MCPWM_TIMER_START_NO_STOP));
 
     state = STATION_STATE_OFF;
-    ESP_LOGI(TAG, "Initialized with 800ns dead-time");
+
+    ESP_LOGI(TAG, "Initialized successfully");
 }
 
 /* ================= CONTROL ================= */
@@ -77,22 +151,19 @@ void station_init(void)
 bool station_set_duty(float duty)
 {
     if (state == STATION_STATE_FAULT) {
-        ESP_LOGE(TAG, "Cannot set duty: FAULT state");
+        ESP_LOGE(TAG, "Cannot set duty: FAULT");
         return false;
     }
 
-    if (duty < 0.0f || duty > 100.0f) {
-        ESP_LOGE(TAG, "Invalid duty: %.2f", duty);
-        return false;
-    }
+    // Clamp duty for safety
+    if (duty < 5.0f)  duty = 5.0f;
+    if (duty > 95.0f) duty = 95.0f;
 
     current_duty = duty;
 
-    mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, duty);
-    mcpwm_set_duty(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_B, duty);
+    uint32_t cmp = (uint32_t)((duty / 100.0f) * PERIOD_TICKS);
 
-    mcpwm_set_duty_type(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_A, MCPWM_DUTY_MODE_0);
-    mcpwm_set_duty_type(MCPWM_UNIT_0, MCPWM_TIMER_0, MCPWM_OPR_B, MCPWM_DUTY_MODE_0);
+    ESP_ERROR_CHECK(mcpwm_comparator_set_compare_value(comparator, cmp));
 
     return true;
 }
@@ -100,41 +171,39 @@ bool station_set_duty(float duty)
 void station_start(void)
 {
     if (state == STATION_STATE_FAULT) {
-        ESP_LOGE(TAG, "Cannot start: FAULT state");
+        ESP_LOGE(TAG, "Cannot start: FAULT");
         return;
     }
 
-    // 🔒 Interlock: ensure both LOW before enabling
-    force_all_low();
     guard_delay();
 
-    // Apply last duty
     station_set_duty(current_duty);
 
     state = STATION_STATE_RUNNING;
-    ESP_LOGI(TAG, "Started");
+
+    ESP_LOGI(TAG, "Started (Duty=%.1f%%)", current_duty);
 }
 
 void station_stop(void)
 {
-    // 🔒 Interlock: immediate shutdown
-    force_all_low();
+    ESP_ERROR_CHECK(mcpwm_comparator_set_compare_value(comparator, 0));
+
     guard_delay();
 
     state = STATION_STATE_OFF;
+
     ESP_LOGI(TAG, "Stopped");
 }
 
-/* ================= FAULT HANDLING ================= */
+/* ================= FAULT ================= */
 
 void station_fault_shutdown(void)
 {
-    // 🚨 HARD STOP
-    force_all_low();
+    ESP_ERROR_CHECK(mcpwm_comparator_set_compare_value(comparator, 0));
 
     state = STATION_STATE_FAULT;
 
-    ESP_LOGE(TAG, "FAULT: Emergency shutdown triggered");
+    ESP_LOGE(TAG, "FAULT: Shutdown");
 }
 
 void station_clear_fault(void)
@@ -142,8 +211,6 @@ void station_clear_fault(void)
     if (state != STATION_STATE_FAULT)
         return;
 
-    // Ensure safe condition before re-enable
-    force_all_low();
     guard_delay();
 
     state = STATION_STATE_OFF;

@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
-#include "freertos/queue.h"
 
 #include "nvs_flash.h"
 #include "esp_log.h"
@@ -15,116 +14,77 @@
 #define TAG "MAIN"
 #define SPEED 200
 
-/* ================= TYPES ================= */
+/* ================= DIRECTION STATE ================= */
 
 typedef enum {
-    CMD_NONE,
-    CMD_STOP,
-    CMD_FORWARD_X,
-    CMD_BACKWARD_X,
-    CMD_FORWARD_Y,
-    CMD_BACKWARD_Y
-} control_cmd_t;
+    DIR_STOP,
+    DIR_FORWARD,
+    DIR_BACKWARD
+} motor_dir_t;
 
-typedef enum {
-    SYS_OK,
-    SYS_FAULT
-} system_state_t;
+static motor_dir_t x_dir = DIR_FORWARD;
+static motor_dir_t y_dir = DIR_FORWARD;
 
-/* ================= GLOBAL ================= */
+/* ================= LIMIT TASK ================= */
 
-static QueueHandle_t control_queue;
-static system_state_t system_state = SYS_OK;
-
-/* ================= SAFETY TASK ================= */
-// 🔥 Highest priority
-
-void safety_task(void *arg)
+void limit_control_task(void *arg)
 {
+    bool prev_x_min = false, prev_x_max = false;
+    bool prev_y_min = false, prev_y_max = false;
+
     while (1)
     {
-        if (x_max_pressed() || x_min_pressed() ||
-            y_max_pressed() || y_min_pressed())
+        bool x_min = x_min_pressed();
+        bool x_max = x_max_pressed();
+        bool y_min = y_min_pressed();
+        bool y_max = y_max_pressed();
+
+        /* ===== SWAPPED CONTROL ===== */
+
+        // X limits control Y motor
+        if (x_max && !prev_x_max)
         {
-            // 🚨 Immediate shutdown
+            ESP_LOGW(TAG, "X_MAX → control Y reverse");
             motor_stop_all();
-            station_fault_shutdown();
+            vTaskDelay(pdMS_TO_TICKS(50));
 
-            system_state = SYS_FAULT;
-
-            ESP_LOGE(TAG, "LIMIT TRIGGERED → SYSTEM FAULT");
-
-            // Send STOP command to system
-            control_cmd_t cmd = CMD_STOP;
-            xQueueOverwrite(control_queue, &cmd);
+            motorB_backward(200);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(1)); // ultra-fast response
-    }
-}
-
-/* ================= MOTOR TASK ================= */
-// ⚡ Motion logic only
-
-void motor_task(void *arg)
-{
-    control_cmd_t cmd = CMD_NONE;
-
-    while (1)
-    {
-        if (xQueueReceive(control_queue, &cmd, portMAX_DELAY))
+        if (x_min && !prev_x_min)
         {
-            if (system_state == SYS_FAULT) {
-                motor_stop_all();
-                continue;
-            }
+            ESP_LOGW(TAG, "X_MIN → control Y forward");
+            motor_stop_all();
+            vTaskDelay(pdMS_TO_TICKS(50));
 
-            switch (cmd)
-            {
-                case CMD_FORWARD_X:
-                    motorA_forward(SPEED);
-                    break;
-
-                case CMD_BACKWARD_X:
-                    motorA_backward(SPEED);
-                    break;
-
-                case CMD_FORWARD_Y:
-                    motorB_forward(SPEED);
-                    break;
-
-                case CMD_BACKWARD_Y:
-                    motorB_backward(SPEED);
-                    break;
-
-                case CMD_STOP:
-                default:
-                    motor_stop_all();
-                    break;
-            }
+            motorB_forward(200);
         }
-    }
-}
 
-/* ================= STATION TASK ================= */
-// 🌐 Low priority (power stage control)
-
-void station_task(void *arg)
-{
-    while (1)
-    {
-        if (system_state == SYS_FAULT)
+        // Y limits control X motor
+        if (y_max && !prev_y_max)
         {
-            station_stop();
-        }
-        else
-        {
-            // Example logic
-            station_set_duty(50);
-            station_start();
+            ESP_LOGW(TAG, "Y_MAX → control X reverse");
+            motor_stop_all();
+            vTaskDelay(pdMS_TO_TICKS(50));
+
+            motorA_backward(200);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(50));
+        if (y_min && !prev_y_min)
+        {
+            ESP_LOGW(TAG, "Y_MIN → control X forward");
+            motor_stop_all();
+            vTaskDelay(pdMS_TO_TICKS(50));
+
+            motorA_forward(200);
+        }
+
+        prev_x_min = x_min;
+        prev_x_max = x_max;
+        prev_y_min = y_min;
+        prev_y_max = y_max;
+
+        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -135,9 +95,22 @@ void app_main(void)
     nvs_flash_init();
     init_spiffs();
 
+    ESP_LOGI(TAG, "Initializing...");
+
     motor_init();
     limit_init();
     station_init();
+
+    /* SAFE STATE */
+    motor_stop_all();
+    station_stop();
+
+    /* ENABLE STATION */
+    station_start();
+
+    /* START INITIAL MOVEMENT */
+    motorA_forward(SPEED);
+    motorB_forward(SPEED);
 
     wifi_init_ap();
 
@@ -145,43 +118,16 @@ void app_main(void)
         ESP_LOGI(TAG, "Webserver running");
     }
 
-    /* ================= QUEUE ================= */
-    control_queue = xQueueCreate(1, sizeof(control_cmd_t));
-
-    /* ================= TASKS ================= */
-
-    // 🔥 SAFETY (highest priority)
+    /* TASK */
     xTaskCreatePinnedToCore(
-        safety_task,
-        "safety_task",
-        2048,
+        limit_control_task,
+        "limit_control",
+        4096,
         NULL,
-        10,
+        5,
         NULL,
         0
     );
 
-    // ⚡ MOTOR CONTROL
-    xTaskCreatePinnedToCore(
-        motor_task,
-        "motor_task",
-        4096,
-        NULL,
-        8,
-        NULL,
-        0
-    );
-
-    // 🌐 STATION / BACKGROUND
-    xTaskCreatePinnedToCore(
-        station_task,
-        "station_task",
-        4096,
-        NULL,
-        3,
-        NULL,
-        1
-    );
-
-    ESP_LOGI(TAG, "System initialized");
+    ESP_LOGI(TAG, "Auto XY movement started");
 }
