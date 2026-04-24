@@ -1,115 +1,77 @@
-#include "pins.h"
 #include "motor.h"
+#include "pins.h"
 #include "driver/gpio.h"
 #include "driver/ledc.h"
+#include "esp_log.h"
 
-#define PWM_MAX 255
+#define TAG "MOTOR"
 
-static inline uint32_t clamp_speed(int speed)
+void motor_init(void)
 {
-    if (speed < 0) return 0;
-    if (speed > PWM_MAX) return PWM_MAX;
-    return speed;
-}
+    ESP_LOGI(TAG, "Motor Init");
 
-void motor_init()
-{
-    gpio_set_direction(PIN_AIN1, GPIO_MODE_OUTPUT);
-    gpio_set_direction(PIN_AIN2, GPIO_MODE_OUTPUT);
-    gpio_set_direction(PIN_BIN1, GPIO_MODE_OUTPUT);
-    gpio_set_direction(PIN_BIN2, GPIO_MODE_OUTPUT);
-    gpio_set_direction(PIN_STBY, GPIO_MODE_OUTPUT);
+    int pins[] = {PIN_AIN1, PIN_AIN2, PIN_BIN1, PIN_BIN2, PIN_STBY};
 
-    // Safe default state
+    /* ---- Step 1: Configure all pins ---- */
+    for (int i = 0; i < 5; i++)
+    {
+        gpio_set_direction(pins[i], GPIO_MODE_OUTPUT);
+    }
+
+    /* ---- Step 2: Force safe state BEFORE enabling ---- */
     gpio_set_level(PIN_AIN1, 0);
     gpio_set_level(PIN_AIN2, 0);
     gpio_set_level(PIN_BIN1, 0);
     gpio_set_level(PIN_BIN2, 0);
 
-    gpio_set_level(PIN_STBY, 1);
+    gpio_set_level(PIN_STBY, 0); // 🔴 KEEP DISABLED FIRST
 
-    ledc_timer_config_t timer = {
+    /* ---- Step 3: Setup PWM ---- */
+    ledc_timer_config_t t = {
         .speed_mode = LEDC_HIGH_SPEED_MODE,
         .timer_num = LEDC_TIMER_0,
-        .freq_hz = 5000,
-        .duty_resolution = LEDC_TIMER_8_BIT,
-        .clk_cfg = LEDC_AUTO_CLK
-    };
-    ledc_timer_config(&timer);
+        .freq_hz = 10000,
+        .duty_resolution = LEDC_TIMER_8_BIT};
+    ledc_timer_config(&t);
 
     ledc_channel_config_t chA = {
         .gpio_num = PIN_PWMA,
-        .speed_mode = LEDC_HIGH_SPEED_MODE,
         .channel = LEDC_CHANNEL_0,
-        .timer_sel = LEDC_TIMER_0,
-        .duty = 0
-    };
+        .timer_sel = LEDC_TIMER_0};
+    ledc_channel_config(&chA);
 
     ledc_channel_config_t chB = {
         .gpio_num = PIN_PWMB,
-        .speed_mode = LEDC_HIGH_SPEED_MODE,
         .channel = LEDC_CHANNEL_1,
-        .timer_sel = LEDC_TIMER_0,
-        .duty = 0
-    };
-
-    ledc_channel_config(&chA);
+        .timer_sel = LEDC_TIMER_0};
     ledc_channel_config(&chB);
+
+    /* ---- Step 4: DO NOT enable STBY automatically ---- */
+    ESP_LOGI(TAG, "Motor ready (STBY still LOW)");
 }
 
-/* ================= MOTOR A ================= */
-
-void motorA_forward(int speed)
+static void drive(int in1, int in2, int ch, int speed, const char *name, bool fwd)
 {
-    gpio_set_level(PIN_AIN1, 1);
-    gpio_set_level(PIN_AIN2, 0);
+    ESP_LOGI(TAG, "%s %s %d", name, fwd ? "FWD" : "REV", speed);
 
-    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, clamp_speed(speed));
-    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
+    gpio_set_level(in1, fwd);
+    gpio_set_level(in2, !fwd);
+
+    ledc_set_duty(LEDC_HIGH_SPEED_MODE, ch, speed);
+    ledc_update_duty(LEDC_HIGH_SPEED_MODE, ch);
 }
 
-void motorA_backward(int speed)
+void motorA_forward(int s) { drive(PIN_AIN1, PIN_AIN2, LEDC_CHANNEL_0, s, "A", true); }
+void motorA_backward(int s) { drive(PIN_AIN1, PIN_AIN2, LEDC_CHANNEL_0, s, "A", false); }
+void motorB_forward(int s) { drive(PIN_BIN1, PIN_BIN2, LEDC_CHANNEL_1, s, "B", true); }
+void motorB_backward(int s) { drive(PIN_BIN1, PIN_BIN2, LEDC_CHANNEL_1, s, "B", false); }
+
+void motor_stop_all(void)
 {
-    gpio_set_level(PIN_AIN1, 0);
-    gpio_set_level(PIN_AIN2, 1);
+    ESP_LOGW(TAG, "STOP ALL");
 
-    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, clamp_speed(speed));
-    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
-}
-
-/* ================= MOTOR B ================= */
-
-void motorB_forward(int speed)
-{
-    gpio_set_level(PIN_BIN1, 1);
-    gpio_set_level(PIN_BIN2, 0);
-
-    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_1, clamp_speed(speed));
-    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_1);
-}
-
-void motorB_backward(int speed)
-{
-    gpio_set_level(PIN_BIN1, 0);
-    gpio_set_level(PIN_BIN2, 1);
-
-    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_1, clamp_speed(speed));
-    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_1);
-}
-
-/* ================= STOP ================= */
-
-void motor_stop_all()
-{
-    // Active brake (strong stop)
     gpio_set_level(PIN_AIN1, 0);
     gpio_set_level(PIN_AIN2, 0);
     gpio_set_level(PIN_BIN1, 0);
     gpio_set_level(PIN_BIN2, 0);
-
-    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0, 0);
-    ledc_set_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_1, 0);
-
-    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_0);
-    ledc_update_duty(LEDC_HIGH_SPEED_MODE, LEDC_CHANNEL_1);
 }

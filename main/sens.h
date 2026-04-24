@@ -1,10 +1,15 @@
 #ifndef SENS_H
 #define SENS_H
 
+#include <stdint.h>
+
 typedef struct {
-    float voltage;
-    float current;
-    float power;
+    float vin;      // Input DC Voltage
+    float iin;      // Input DC Current
+    float vout;     // Output AC Voltage (Peak detected)
+    float iout;     // Output Current
+    float pin;      // Input Power
+    float pout;     // Output Power (approx)
 } power_data_t;
 
 void sens_init(void);

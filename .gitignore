@@ -1,14 +1,67 @@
-# Build directories
-build/
-sdkconfig.old
+# ================= ESP-IDF =================
 
-# Python & System files
+# Build output
+/build/
+/main/build/
+
+# CMake & Ninja
+CMakeFiles/
+CMakeCache.txt
+cmake_install.cmake
+compile_commands.json
+*.ninja
+*.ninja_deps
+*.ninja_log
+
+# ESP-IDF config (keep sdkconfig, ignore backups)
+sdkconfig.old
+sdkconfig.bak
+
+# Partition / binary outputs
+*.bin
+*.elf
+*.map
+
+# Dependencies (managed by IDF)
+managed_components/
+
+# ================= Web (React/Vite/etc) =================
+
+# Node modules (if you build frontend here)
+node_modules/
+web/node_modules/
+
+# Build outputs
+web/dist/
+web/build/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ================= Python & System =================
+
 __pycache__/
 *.py[cod]
-.DS_Store
+*.pyo
 
-# Local IDE settings
+# OS files
+.DS_Store
+Thumbs.db
+
+# ================= IDE =================
+
 .vscode/
 .idea/
+.clangd/
+
+# ================= Secrets =================
 
 secrets.h
+
+# ================= Misc =================
+
+*.log
+*.tmp
+*.swp

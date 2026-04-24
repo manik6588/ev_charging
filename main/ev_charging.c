@@ -8,24 +8,66 @@
 #include "motor.h"
 #include "limit.h"
 #include "station.h"
+#include "sens.h"
+#include "api.h"
 #include "wifi.h"
 #include "webserver.h"
+#include "websocket.h"
+#include "mdns_service.h"
+#include "secrets.h"
 
 #define TAG "MAIN"
-#define SPEED 200
 
-/* ================= DIRECTION STATE ================= */
+/* ================= DASHBOARD CALLBACK ================= */
 
-typedef enum {
-    DIR_STOP,
-    DIR_FORWARD,
-    DIR_BACKWARD
-} motor_dir_t;
+// Called when frontend sends config
+void on_dashboard_config_received(const config_data_t *config)
+{
+    ESP_LOGI(TAG, "Config -> Freq: %dkHz | DeadTime: %dns",
+             config->frequency, config->deadTime);
 
-static motor_dir_t x_dir = DIR_FORWARD;
-static motor_dir_t y_dir = DIR_FORWARD;
+    // Convert kHz → Hz
+    uint32_t freq_hz = config->frequency * 1000;
 
-/* ================= LIMIT TASK ================= */
+    station_update_pwm(freq_hz, config->deadTime);
+}
+
+/* ================= TELEMETRY TASK ================= */
+
+void telemetry_task(void *arg)
+{
+    telemetry_data_t state = {0};
+
+    while (1)
+    {
+        /* -------- SENSOR UPDATE -------- */
+        sens_update();
+        power_data_t pwr = sens_get_data();
+
+        /* -------- TELEMETRY MAPPING -------- */
+        // Using OUTPUT side (more relevant for WPT)
+        state.voltage = pwr.vout;
+        state.current = pwr.iout;
+
+        /* -------- STATION STATE -------- */
+        bool is_active = (station_get_state() == STATION_STATE_RUNNING);
+
+        state.hinActive = is_active;
+        state.linActive = is_active;
+
+        float duty = station_get_duty();
+
+        state.hinDuty = duty;
+        state.linDuty = duty;
+
+        /* -------- SEND DATA -------- */
+        api_send_telemetry(&state);
+
+        vTaskDelay(pdMS_TO_TICKS(100)); // 10 Hz
+    }
+}
+
+/* ================= LIMIT CONTROL ================= */
 
 void limit_control_task(void *arg)
 {
@@ -39,43 +81,39 @@ void limit_control_task(void *arg)
         bool y_min = y_min_pressed();
         bool y_max = y_max_pressed();
 
-        /* ===== SWAPPED CONTROL ===== */
+        /* ===== CROSS CONTROL ===== */
 
-        // X limits control Y motor
+        // X limits → control Y motor
         if (x_max && !prev_x_max)
         {
-            ESP_LOGW(TAG, "X_MAX → control Y reverse");
+            ESP_LOGW(TAG, "X_MAX → Y reverse");
             motor_stop_all();
             vTaskDelay(pdMS_TO_TICKS(50));
-
             motorB_backward(200);
         }
 
         if (x_min && !prev_x_min)
         {
-            ESP_LOGW(TAG, "X_MIN → control Y forward");
+            ESP_LOGW(TAG, "X_MIN → Y forward");
             motor_stop_all();
             vTaskDelay(pdMS_TO_TICKS(50));
-
             motorB_forward(200);
         }
 
-        // Y limits control X motor
+        // Y limits → control X motor
         if (y_max && !prev_y_max)
         {
-            ESP_LOGW(TAG, "Y_MAX → control X reverse");
+            ESP_LOGW(TAG, "Y_MAX → X reverse");
             motor_stop_all();
             vTaskDelay(pdMS_TO_TICKS(50));
-
             motorA_backward(200);
         }
 
         if (y_min && !prev_y_min)
         {
-            ESP_LOGW(TAG, "Y_MIN → control X forward");
+            ESP_LOGW(TAG, "Y_MIN → X forward");
             motor_stop_all();
             vTaskDelay(pdMS_TO_TICKS(50));
-
             motorA_forward(200);
         }
 
@@ -92,42 +130,61 @@ void limit_control_task(void *arg)
 
 void app_main(void)
 {
-    nvs_flash_init();
+    /* -------- NVS -------- */
+    ESP_ERROR_CHECK(nvs_flash_init());
     init_spiffs();
 
-    ESP_LOGI(TAG, "Initializing...");
+    ESP_LOGI(TAG, "Initializing Hardware...");
 
+    /* -------- MODULE INIT -------- */
     motor_init();
     limit_init();
     station_init();
+    sens_init();
 
-    /* SAFE STATE */
+    /* -------- SAFE STATE -------- */
     motor_stop_all();
     station_stop();
 
-    /* ENABLE STATION */
-    station_start();
+    /* -------- NETWORK -------- */
 
-    /* START INITIAL MOVEMENT */
-    motorA_forward(SPEED);
-    motorB_forward(SPEED);
+    wifi_init_ap(); // start AP (creates netif)
 
-    wifi_init_ap();
+    wifi_set_ap_ip(AP_IP, AP_GW, AP_MASK); // change IP here
 
-    if (start_webserver() != NULL) {
-        ESP_LOGI(TAG, "Webserver running");
+    mdns_service_init("esp32", "EV Charger");
+    mdns_service_add_http(80);
+
+    httpd_handle_t server = start_webserver();
+
+    if (server)
+    {
+        ESP_LOGI(TAG, "Webserver started");
+        api_set_config_callback(on_dashboard_config_received);
+        api_init(server);
     }
 
-    /* TASK */
+    websocket_init(server);
+    api_init(server);
+
+    /* -------- TASKS -------- */
     xTaskCreatePinnedToCore(
         limit_control_task,
-        "limit_control",
+        "limit_task",
         4096,
         NULL,
         5,
         NULL,
-        0
-    );
+        0);
 
-    ESP_LOGI(TAG, "Auto XY movement started");
+    xTaskCreatePinnedToCore(
+        telemetry_task,
+        "telemetry_task",
+        4096,
+        NULL,
+        4,
+        NULL,
+        1);
+
+    ESP_LOGI(TAG, "System Ready 🚀");
 }
