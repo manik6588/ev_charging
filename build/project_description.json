@@ -1,7 +1,7 @@
 {
     "version":            "1.3",
     "project_name":       "ev_charging",
-    "project_version":    "1",
+    "project_version":    "472d817-dirty",
     "project_path":       "C:/Users/manik/Documents/ESP/ev_charging",
     "idf_path":           "C:/esp/v6.0/esp-idf",
     "build_dir":          "C:/Users/manik/Documents/ESP/ev_charging/build",
