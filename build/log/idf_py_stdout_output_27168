@@ -1,0 +1,115 @@
+Command: C:\Espressif\tools\python\v6.0\venv\Scripts\python.exe C:\esp\v6.0\esp-idf\tools/idf_monitor.py -p COM7 -b 115200 --toolchain-prefix xtensa-esp32-elf- --target esp32 --revision 0 C:\Users\manik\Documents\ESP\ev_charging\build\ev_charging.elf C:\Users\manik\Documents\ESP\ev_charging\build\bootloader\bootloader.elf --force-color -m 'C:\Espressif\tools\python\v6.0\venv\Scripts\python.exe' 'C:\esp\v6.0\esp-idf\tools\idf.py'
+v:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0040,len:6272
+load:0x40078000,len:15848
+loa�ets Jul 29 2019 12:21:46
+
+rst:0x1 (POWERON_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:2
+load:0x3fff0040,len:6272
+load:0x40078000,len:15848
+load:0x40080400,len:3920
+entry 0x40080644
+[0;32mI (27) boot: ESP-IDF v6.0 2nd stage bootloader[0m
+[0;32mI (27) boot: compile time Apr 25 2026 21:10:07[0m
+[0;32mI (28) boot: Multicore bootloader[0m
+[0;32mI (29) boot: chip revision: v3.1[0m
+[0;32mI (31) boot.esp32: SPI Speed      : 40MHz[0m
+[0;32mI (35) boot.esp32: SPI Mode       : DIO[0m
+[0;32mI (39) boot.esp32: SPI Flash Size : 4MB[0m
+[0;32mI (42) boot: Enabling RNG early entropy source...[0m
+[0;32mI (47) boot: Partition Table:[0m
+[0;32mI (49) boot: ## Label            Usage          Type ST Offset   Length[0m
+[0;32mI (56) boot:  0 nvs              WiFi data        01 02 00009000 00006000[0m
+[0;32mI (62) boot:  1 phy_init         RF data          01 01 0000f000 00001000[0m
+[0;32mI (69) boot:  2 factory          factory app      00 00 00010000 00177000[0m
+[0;32mI (75) boot:  3 spiffs           Unknown data     01 82 00187000 0007d000[0m
+[0;32mI (82) boot: End of partition table[0m
+[0;32mI (85) esp_image: segment 0: paddr=00010020 vaddr=3f400020 size=1e510h (124176) map[0m
+[0;32mI (137) esp_image: segment 1: paddr=0002e538 vaddr=3ffb0000 size=01ae0h (  6880) load[0m
+[0;32mI (140) esp_image: segment 2: paddr=00030020 vaddr=400d0020 size=99778h (628600) map[0m
+[0;32mI (365) esp_image: segment 3: paddr=000c97a0 vaddr=3ffb1ae0 size=02adch ( 10972) load[0m
+[0;32mI (369) esp_image: segment 4: paddr=000cc284 vaddr=40080000 size=15940h ( 88384) load[0m
+[0;32mI (405) esp_image: segment 5: paddr=000e1bcc vaddr=50000000 size=00028h (    40) load[0m
+[0;32mI (416) boot: Loaded app from partition at offset 0x10000[0m
+[0;32mI (417) boot: Disabling RNG early entropy source...[0m
+[0;32mI (427) cpu_start: Multicore app[0m
+[0;32mI (435) cpu_start: GPIO 3 and 1 are used as console UART I/O pins[0m
+[0;32mI (436) cpu_start: Pro cpu start user code[0m
+[0;32mI (436) cpu_start: cpu freq: 160000000 Hz[0m
+[0;32mI (437) app_init: Application information:[0m
+[0;32mI (441) app_init: Project name:     ev_charging[0m
+[0;32mI (445) app_init: App version:      1[0m
+[0;32mI (449) app_init: Compile time:     Apr 25 2026 21:09:04[0m
+[0;32mI (454) app_init: ELF file SHA256:  87fad9a2c...[0m
+[0;32mI (458) app_init: ESP-IDF:          v6.0[0m
+[0;32mI (462) efuse_init: Min chip rev:     v0.0[0m
+[0;32mI (466) efuse_init: Max chip rev:     v3.99 [0m
+[0;32mI (470) efuse_init: Chip rev:         v3.1[0m
+[0;32mI (474) heap_init: Initializing. RAM available for dynamic allocation:[0m
+[0;32mI (480) heap_init: At 3FFAE6E0 len 00001920 (6 KiB): DRAM[0m
+[0;32mI (485) heap_init: At 3FFB8C48 len 000273B8 (156 KiB): DRAM[0m
+[0;32mI (490) heap_init: At 3FFE0440 len 00003AE0 (14 KiB): D/IRAM[0m
+[0;32mI (496) heap_init: At 3FFE4350 len 0001BCB0 (111 KiB): D/IRAM[0m
+[0;32mI (501) heap_init: At 40095940 len 0000A6C0 (41 KiB): IRAM[0m
+[0;33mW (508) spi_flash: Detected boya flash chip but using generic driver. For optimal functionality, enable `SPI_FLASH_SUPPORT_BOYA_CHIP` in menuconfig[0m
+[0;32mI (519) spi_flash: detected chip: generic[0m
+[0;32mI (523) spi_flash: flash io: dio[0m
+[0;32mI (528) main_task: Started on CPU0[0m
+[0;32mI (538) main_task: Calling app_main()[0m
+[0;32mI (538) MAIN: App started[0m
+[0;32mI (538) MAIN: Init NVS[0m
+[0;32mI (568) MAIN: Init WiFi[0m
+[0;32mI (578) wifi:wifi driver task: 3ffc09b8, prio:23, stack:6656, core=0[0m
+[0;32mI (588) wifi:wifi firmware version: 44738b4[0m
+[0;32mI (588) wifi:wifi certification version: v7.0[0m
+[0;32mI (598) wifi:config NVS flash: enabled[0m
+[0;32mI (598) wifi:config nano formatting: disabled[0m
+[0;32mI (598) wifi:Init data frame dynamic rx buffer num: 32[0m
+[0;32mI (598) wifi:Init static rx mgmt buffer num: 5[0m
+[0;32mI (608) wifi:Init management short buffer num: 32[0m
+[0;32mI (608) wifi:Init dynamic tx buffer num: 32[0m
+[0;32mI (618) wifi:Init static rx buffer size: 1600[0m
+[0;32mI (618) wifi:Init static rx buffer num: 10[0m
+[0;32mI (618) wifi:Init dynamic rx buffer num: 32[0m
+[0;32mI (628) wifi_init: rx ba win: 6[0m
+[0;32mI (628) wifi_init: accept mbox: 6[0m
+[0;32mI (628) wifi_init: tcpip mbox: 32[0m
+[0;32mI (638) wifi_init: udp mbox: 6[0m
+[0;32mI (638) wifi_init: tcp mbox: 6[0m
+[0;32mI (638) wifi_init: tcp tx win: 5760[0m
+[0;32mI (648) wifi_init: tcp rx win: 5760[0m
+[0;32mI (648) wifi_init: tcp mss: 1440[0m
+[0;32mI (648) wifi_init: WiFi IRAM OP enabled[0m
+[0;32mI (658) wifi_init: WiFi RX IRAM OP enabled[0m
+[0;32mI (668) phy_init: phy_version 4863,a3a4459,Oct 28 2025,14:30:06[0m
+[0;32mI (748) phy_init: Saving new calibration data due to checksum failure or outdated calibration data, mode(0)[0m
+[0;32mI (768) wifi:mode : softAP (88:57:21:ae:2b:85)[0m
+[0;32mI (768) wifi:Total power save buffer number: 16[0m
+[0;32mI (768) wifi:Init max length of beacon: 752/752[0m
+[0;32mI (768) wifi:Init max length of beacon: 752/752[0m
+[0;32mI (778) WIFI: AP Started: CHARGING_STATION_01[0m
+[0;32mI (778) esp_netif_lwip: DHCP server started on interface WIFI_AP_DEF with IP: 192.168.4.1[0m
+[0;32mI (788) WIFI: IP: 192.168.4.1[0m
+[0;32mI (788) NET: AP IP set → 192.168.5.1[0m
+[0;32mI (788) MAIN: Init SPIFFS[0m
+[0;32mI (828) WEB: SPIFFS mounted[0m
+[0;32mI (828) MAIN: Init WebServer[0m
+[0;32mI (828) MOTOR: Motor Init[0m
+[0;32mI (828) MOTOR: Motor wiggle test[0m
+[0;32mI (828) MOTOR: A FWD 120[0m
+[0;32mI (1138) MOTOR: A REV 120[0m
+[0;32mI (1438) MOTOR: B FWD 120[0m
+[0;32mI (1538) MOTOR: B REV 120[0m
+[0;33mW (1638) MOTOR: STOP ALL[0m
+[0;32mI (1638) MOTOR: Motor wiggle done[0m
+[0;32mI (1638) MOTOR: Motor ready (STBY still LOW)[0m
+[0;32mI (1638) MAIN: Start WebServer[0m
+[0;33mW (1638) WEB: SPIFFS already mounted, skipping[0m
+[0;32mI (1638) WS: Registering WS endpoint[0m
+[0;32mI (1638) WEB: Webserver started (OOP MODE)[0m
+[0;32mI (1648) MAIN: System Ready 🚀[0m
+[0;32mI (1648) main_task: Returned from app_main()[0m

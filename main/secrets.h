@@ -1,0 +1,5 @@
+#define AP_SSID     "CHARGING_STATION_01"
+#define AP_PASS     ""
+#define AP_IP       "192.168.5.1"
+#define AP_GW       "192.168.5.1"
+#define AP_MASK     "255.255.255.0"
