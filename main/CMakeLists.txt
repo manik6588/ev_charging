@@ -7,6 +7,7 @@ idf_component_register(
         "network/wifi.c"
         "driver/motor.c"
         "driver/station.c"
+        "driver/limit.c"
     INCLUDE_DIRS 
         "."
         "network"

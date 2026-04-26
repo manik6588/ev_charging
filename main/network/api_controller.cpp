@@ -7,9 +7,60 @@ extern "C"
 #include "cJSON.h"
 #include "motor.h"
 #include "station.h"
+#include "limit.h"
 }
 
 static const char *TAG = "API";
+
+static bool limit_block_A(int speed)
+{
+    if (speed > 0 && x_max_pressed())
+    {
+        ESP_LOGW(TAG, "Blocked: X_MAX limit reached");
+        return true;
+    }
+
+    if (speed < 0 && x_min_pressed())
+    {
+        ESP_LOGW(TAG, "Blocked: X_MIN limit reached");
+        return true;
+    }
+
+    return false;
+}
+
+static bool limit_block_B(int speed)
+{
+    if (speed > 0 && y_max_pressed())
+    {
+        ESP_LOGW(TAG, "Blocked: Y_MAX limit reached");
+        return true;
+    }
+
+    if (speed < 0 && y_min_pressed())
+    {
+        ESP_LOGW(TAG, "Blocked: Y_MIN limit reached");
+        return true;
+    }
+
+    return false;
+}
+
+void safety_monitor_task(void *arg)
+{
+    while (1)
+    {
+        uint8_t state = limit_get_state();
+
+        if (state != 0)
+        {
+            ESP_LOGW(TAG, "Limit triggered! Emergency stop.");
+            motor_stop_all();
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
 
 /* ================= SECTION MAPS ================= */
 
@@ -38,8 +89,15 @@ static std::map<std::string, ApiController::FunctionHandler> motorMap = {
              return;
 
          int v = args[0];
+         ESP_LOGI(TAG, "Motor A Speed: %d", v);
 
-         motor_enable();
+         motor_enable(); // ensure driver ON
+
+         if (limit_block_A(v))
+         {
+             motor_stop_all();
+             return;
+         }
 
          if (v > 0)
              motorA_forward(v);
@@ -55,40 +113,49 @@ static std::map<std::string, ApiController::FunctionHandler> motorMap = {
              return;
 
          int v = args[0];
+         ESP_LOGI(TAG, "Motor B Speed: %d", v);
 
          motor_enable();
+
+         if (limit_block_B(v))
+         {
+             motor_stop_all();
+             return;
+         }
 
          if (v > 0)
              motorB_forward(v);
          else if (v < 0)
              motorB_backward(-v);
          else
-             motorB_forward(0);
-     }}};
+             motor_stop_all();
+     }},
+};
 
 // -------- STATION --------
-static std::map<std::string, ApiController::FunctionHandler> stationMap = {
+static std::map<std::string, ApiController::FunctionHandler>
+    stationMap = {
 
-    {"start", [](const std::vector<int> &)
-     {
-         ESP_LOGI(TAG, "Station START");
-         station_start();
-     }},
+        {"start", [](const std::vector<int> &)
+         {
+             ESP_LOGI(TAG, "Station START");
+             station_start();
+         }},
 
-    {"stop", [](const std::vector<int> &)
-     {
-         ESP_LOGI(TAG, "Station STOP");
-         station_stop();
-     }},
+        {"stop", [](const std::vector<int> &)
+         {
+             ESP_LOGI(TAG, "Station STOP");
+             station_stop();
+         }},
 
-    {"setFreq", [](const std::vector<int> &args)
-     {
-         if (args.empty())
-             return;
+        {"setFreq", [](const std::vector<int> &args)
+         {
+             if (args.empty())
+                 return;
 
-         int freq_khz = args[0];
-         station_update_pwm(freq_khz * 1000, 100);
-     }}};
+             int freq_khz = args[0];
+             station_update_pwm(freq_khz * 1000, 100);
+         }}};
 
 // -------- SYSTEM --------
 static std::map<std::string, ApiController::FunctionHandler> systemMap = {
@@ -97,7 +164,9 @@ static std::map<std::string, ApiController::FunctionHandler> systemMap = {
      {
          ESP_LOGW(TAG, "System REBOOT");
          esp_restart();
-     }}};
+     }}
+
+};
 
 /* ================= SECTION MAP ================= */
 
