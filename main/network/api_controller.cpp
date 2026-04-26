@@ -1,11 +1,12 @@
 #include "api_controller.hpp"
 #include "websocket.hpp"
 
-extern "C" {
+extern "C"
+{
 #include "esp_log.h"
 #include "cJSON.h"
 #include "motor.h"
-// #include "station.h"
+#include "station.h"
 }
 
 static const char *TAG = "API";
@@ -15,80 +16,97 @@ static const char *TAG = "API";
 // -------- MOTOR --------
 static std::map<std::string, ApiController::FunctionHandler> motorMap = {
 
-    {"start", [](const std::vector<int>&) {
-        ESP_LOGI(TAG, "Motor START");
-        motor_init(); // ensure initialized
-    }},
+    {"start", [](const std::vector<int> &)
+     {
+         ESP_LOGI(TAG, "Motor START");
 
-    {"stop", [](const std::vector<int>&) {
-        ESP_LOGI(TAG, "Motor STOP");
-        motor_stop_all();
-    }},
+         motor_init();
+         motor_enable();
+     }},
 
-    {"setA", [](const std::vector<int>& args) {
-        if (args.empty()) return;
+    {"stop", [](const std::vector<int> &)
+     {
+         ESP_LOGI(TAG, "Motor STOP");
 
-        int v = args[0];
+         motor_stop_all();
+         motor_disable();
+     }},
 
-        if (v > 0) motorA_forward(v);
-        else if (v < 0) motorA_backward(-v);
-        else motorA_forward(0);
-    }},
+    {"setA", [](const std::vector<int> &args)
+     {
+         if (args.empty())
+             return;
 
-    {"setB", [](const std::vector<int>& args) {
-        if (args.empty()) return;
+         int v = args[0];
 
-        int v = args[0];
+         motor_enable();
 
-        if (v > 0) motorB_forward(v);
-        else if (v < 0) motorB_backward(-v);
-        else motorB_forward(0);
-    }}
-};
+         if (v > 0)
+             motorA_forward(v);
+         else if (v < 0)
+             motorA_backward(-v);
+         else
+             motor_stop_all();
+     }},
 
+    {"setB", [](const std::vector<int> &args)
+     {
+         if (args.empty())
+             return;
+
+         int v = args[0];
+
+         motor_enable();
+
+         if (v > 0)
+             motorB_forward(v);
+         else if (v < 0)
+             motorB_backward(-v);
+         else
+             motorB_forward(0);
+     }}};
 
 // -------- STATION --------
-// static std::map<std::string, ApiController::FunctionHandler> stationMap = {
+static std::map<std::string, ApiController::FunctionHandler> stationMap = {
 
-//     {"start", [](const std::vector<int>&) {
-//         ESP_LOGI(TAG, "Station START");
-//         station_start();
-//     }},
+    {"start", [](const std::vector<int> &)
+     {
+         ESP_LOGI(TAG, "Station START");
+         station_start();
+     }},
 
-//     {"stop", [](const std::vector<int>&) {
-//         ESP_LOGI(TAG, "Station STOP");
-//         station_stop();
-//     }},
+    {"stop", [](const std::vector<int> &)
+     {
+         ESP_LOGI(TAG, "Station STOP");
+         station_stop();
+     }},
 
-//     {"setFreq", [](const std::vector<int>& args) {
-//         if (args.empty()) return;
+    {"setFreq", [](const std::vector<int> &args)
+     {
+         if (args.empty())
+             return;
 
-//         int freq_khz = args[0];
-//         station_update_pwm(freq_khz * 1000, 100);
-//     }}
-// };
-
+         int freq_khz = args[0];
+         station_update_pwm(freq_khz * 1000, 100);
+     }}};
 
 // -------- SYSTEM --------
 static std::map<std::string, ApiController::FunctionHandler> systemMap = {
 
-    {"reboot", [](const std::vector<int>&) {
-        ESP_LOGW(TAG, "System REBOOT");
-        esp_restart();
-    }}
-};
-
+    {"reboot", [](const std::vector<int> &)
+     {
+         ESP_LOGW(TAG, "System REBOOT");
+         esp_restart();
+     }}};
 
 /* ================= SECTION MAP ================= */
 
 std::map<std::string,
-    std::map<std::string, ApiController::FunctionHandler>>
-ApiController::sectionMaps = {
-    {"motor", motorMap},
-    // {"station", stationMap},
-    {"system", systemMap}
-};
-
+         std::map<std::string, ApiController::FunctionHandler>>
+    ApiController::sectionMaps = {
+        {"motor", motorMap},
+        {"station", stationMap},
+        {"system", systemMap}};
 
 /* ================= HTTP ================= */
 
@@ -97,7 +115,8 @@ esp_err_t ApiController::handleHttp(httpd_req_t *req)
     char buffer[512];
 
     int len = httpd_req_recv(req, buffer, sizeof(buffer) - 1);
-    if (len <= 0) return ESP_FAIL;
+    if (len <= 0)
+        return ESP_FAIL;
 
     buffer[len] = '\0';
 
@@ -109,7 +128,6 @@ esp_err_t ApiController::handleHttp(httpd_req_t *req)
     return ESP_OK;
 }
 
-
 /* ================= WEBSOCKET ================= */
 
 void ApiController::handleWebSocket(const std::string &msg)
@@ -120,7 +138,6 @@ void ApiController::handleWebSocket(const std::string &msg)
 
     WebSocketServer::broadcast(response);
 }
-
 
 /* ================= CORE PROCESS ================= */
 
@@ -161,7 +178,6 @@ std::string ApiController::process(const std::string &body)
     return result;
 }
 
-
 /* ================= READ ================= */
 
 std::string ApiController::handleRead(const std::string &section)
@@ -178,7 +194,6 @@ std::string ApiController::handleRead(const std::string &section)
     return R"({"error":"unknown section"})";
 }
 
-
 /* ================= UPDATE ================= */
 
 std::string ApiController::handleUpdate(const std::string &section, cJSON *json)
@@ -193,7 +208,7 @@ std::string ApiController::handleUpdate(const std::string &section, cJSON *json)
     cJSON_ArrayForEach(item, actions)
     {
         cJSON *fname = cJSON_GetObjectItem(item, "function_name");
-        cJSON *args  = cJSON_GetObjectItem(item, "arguments");
+        cJSON *args = cJSON_GetObjectItem(item, "arguments");
 
         if (!cJSON_IsString(fname) || !cJSON_IsArray(args))
             continue;
@@ -211,7 +226,6 @@ std::string ApiController::handleUpdate(const std::string &section, cJSON *json)
 
     return R"({"status":"updated"})";
 }
-
 
 /* ================= EXECUTION ================= */
 

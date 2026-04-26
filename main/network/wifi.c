@@ -31,7 +31,7 @@ void wifi_init_ap()
     esp_wifi_start();
 
     ESP_LOGI("WIFI", "AP Started: %s", AP_SSID);
-    ESP_LOGI("WIFI", "IP: 192.168.4.1");
+    ESP_LOGI("WIFI", "IP: %s", AP_IP);
 }
 
 esp_err_t wifi_set_ap_ip(const char *ip, const char *gw, const char *netmask)

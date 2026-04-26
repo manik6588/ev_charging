@@ -6,6 +6,7 @@ idf_component_register(
         "network/websocket.cpp"
         "network/wifi.c"
         "driver/motor.c"
+        "driver/station.c"
     INCLUDE_DIRS 
         "."
         "network"

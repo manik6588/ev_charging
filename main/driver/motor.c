@@ -88,6 +88,18 @@ void motor_init(void)
     ESP_LOGI(TAG, "Motor ready (STBY still LOW)");
 }
 
+void motor_enable(void)
+{
+    ESP_LOGI(TAG, "Motor ENABLE (STBY HIGH)");
+    gpio_set_level(PIN_STBY, 1);
+}
+
+void motor_disable(void)
+{
+    ESP_LOGI(TAG, "Motor DISABLE (STBY LOW)");
+    gpio_set_level(PIN_STBY, 0);
+}
+
 static void drive(int in1, int in2, int ch, int speed, const char *name, bool fwd)
 {
     ESP_LOGI(TAG, "%s %s %d", name, fwd ? "FWD" : "REV", speed);
