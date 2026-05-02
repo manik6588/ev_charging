@@ -1,12 +1,12 @@
 #include "api_controller.hpp"
 #include "websocket.hpp"
+#include "search.hpp"
 
 extern "C"
 {
 #include "esp_log.h"
 #include "cJSON.h"
 #include "motor.h"
-#include "station.h"
 #include "limit.h"
 }
 
@@ -83,15 +83,13 @@ static std::map<std::string, ApiController::FunctionHandler> motorMap = {
          motor_disable();
      }},
 
+    // -------- MOTOR MAP UPDATES --------
     {"setA", [](const std::vector<int> &args)
      {
          if (args.empty())
              return;
-
          int v = args[0];
-         ESP_LOGI(TAG, "Motor A Speed: %d", v);
-
-         motor_enable(); // ensure driver ON
+         motor_enable();
 
          if (limit_block_A(v))
          {
@@ -99,10 +97,11 @@ static std::map<std::string, ApiController::FunctionHandler> motorMap = {
              return;
          }
 
+         // Use motorX (Motor A)
          if (v > 0)
-             motorA_forward(v);
+             motorX_forward(v);
          else if (v < 0)
-             motorA_backward(-v);
+             motorX_backward(-v);
          else
              motor_stop_all();
      }},
@@ -111,10 +110,7 @@ static std::map<std::string, ApiController::FunctionHandler> motorMap = {
      {
          if (args.empty())
              return;
-
          int v = args[0];
-         ESP_LOGI(TAG, "Motor B Speed: %d", v);
-
          motor_enable();
 
          if (limit_block_B(v))
@@ -123,39 +119,35 @@ static std::map<std::string, ApiController::FunctionHandler> motorMap = {
              return;
          }
 
+         // Use motorY (Motor B)
          if (v > 0)
-             motorB_forward(v);
+             motorY_forward(v);
          else if (v < 0)
-             motorB_backward(-v);
+             motorY_backward(-v);
          else
              motor_stop_all();
      }},
 };
 
-// -------- STATION --------
-static std::map<std::string, ApiController::FunctionHandler>
-    stationMap = {
+// -------- SEARCH --------
+static std::map<std::string, ApiController::FunctionHandler> searchMap = {
 
-        {"start", [](const std::vector<int> &)
-         {
-             ESP_LOGI(TAG, "Station START");
-             station_start();
-         }},
+    {"start", [](const std::vector<int> &)
+     {
+         ESP_LOGI(TAG, "Search START");
 
-        {"stop", [](const std::vector<int> &)
-         {
-             ESP_LOGI(TAG, "Station STOP");
-             station_stop();
-         }},
+         search_init(); // ensure initialized
+         search_start();
+     }},
 
-        {"setFreq", [](const std::vector<int> &args)
-         {
-             if (args.empty())
-                 return;
+    {"stop", [](const std::vector<int> &)
+     {
+         ESP_LOGI(TAG, "Search STOP");
 
-             int freq_khz = args[0];
-             station_update_pwm(freq_khz * 1000, 100);
-         }}};
+         search_stop();
+         motor_stop_all(); // safety: stop motors too
+     }},
+};
 
 // -------- SYSTEM --------
 static std::map<std::string, ApiController::FunctionHandler> systemMap = {
@@ -174,7 +166,7 @@ std::map<std::string,
          std::map<std::string, ApiController::FunctionHandler>>
     ApiController::sectionMaps = {
         {"motor", motorMap},
-        {"station", stationMap},
+        {"search", searchMap},
         {"system", systemMap}};
 
 /* ================= HTTP ================= */
@@ -304,24 +296,23 @@ void ApiController::executeFunction(
     const std::vector<int> &args)
 {
     auto sec = sectionMaps.find(section);
-
-    if (sec == sectionMaps.end())
-    {
+    if (sec == sectionMaps.end()) {
         ESP_LOGW(TAG, "Unknown section: %s", section.c_str());
         return;
     }
 
     auto &funcMap = sec->second;
-
     auto it = funcMap.find(name);
 
-    if (it != funcMap.end())
-    {
-        it->second(args);
-    }
-    else
-    {
-        ESP_LOGW(TAG, "Unknown function [%s] in section [%s]",
+    // Check if function exists in map AND if the function object is valid
+    if (it != funcMap.end()) { 
+        if (it->second) { // This checks if the std::function is not null
+            it->second(args);
+        } else {
+            ESP_LOGE(TAG, "Function [%s] exists but is uninitialized (null)", name.c_str());
+        }
+    } else {
+        ESP_LOGW(TAG, "Unknown function [%s] in section [%s]", 
                  name.c_str(), section.c_str());
     }
 }

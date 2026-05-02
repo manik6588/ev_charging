@@ -1,6 +1,7 @@
 # ================= ESP-IDF =================
 
 # Build output
+build/
 /build/
 /main/build/
 

@@ -4,10 +4,11 @@ idf_component_register(
         "network/webserver.cpp"
         "network/api_controller.cpp"
         "network/websocket.cpp"
+        "network/search.cpp"
         "network/wifi.c"
         "driver/motor.c"
-        "driver/station.c"
         "driver/limit.c"
+        "driver/ir.c"
     INCLUDE_DIRS 
         "."
         "network"
